@@ -10,7 +10,7 @@ object TurnoApi {
     private val client = OkHttpClient()
 
     fun enviarTurno(departamentoId: Int, callback: (Boolean, String) -> Unit) {
-        val url = "http://192.162.20.95/llamado_turno/public/api/turnos"
+        val url = "http://192.168.1.206/llamado_turno/public/api/turnos"
 
         val json = JSONObject().apply {
             put("departamento_id", departamentoId)
