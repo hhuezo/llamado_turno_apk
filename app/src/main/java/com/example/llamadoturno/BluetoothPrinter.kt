@@ -5,10 +5,16 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
 import java.io.OutputStream
 import java.lang.reflect.Method
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 object BluetoothPrinter {
@@ -26,20 +32,13 @@ object BluetoothPrinter {
         return bluetoothAdapter?.bondedDevices
     }
 
-    // TRUCO FUNDAMENTAL PARA PT-210 (createRfcommSocket FALLA)
     @SuppressLint("MissingPermission")
     fun connect(device: BluetoothDevice): Boolean {
         return try {
-            Log.d(TAG, "Connecting to: ${device.name} (${device.address})")
-
-            // 1) Intentar conexión normal
             try {
                 socket = device.createRfcommSocketToServiceRecord(uuid)
                 socket!!.connect()
             } catch (e: Exception) {
-                Log.w(TAG, "Default RFCOMM failed, trying fallback...")
-
-                // 2) FALLBACK: método oculto "createRfcommSocket"
                 val method: Method = device.javaClass.getMethod(
                     "createRfcommSocket", Int::class.javaPrimitiveType
                 )
@@ -48,64 +47,200 @@ object BluetoothPrinter {
             }
 
             outputStream = socket!!.outputStream
-
-            Log.d(TAG, "Bluetooth connection established successfully.")
             true
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error connecting to PT-210: ${e.message}")
-            e.printStackTrace()
+            Log.e(TAG, "Error connecting: ${e.message}")
             false
         }
     }
 
-    // ✨ FORMATO EXACTO QUE FUNCIONA EN PT-210
-    fun printTicket(turno: String) {
+
+    // -------------------------------------------------------------
+    // 🔥 PRINT TICKET — TEXTO NORMAL (NO SE CORTA)
+    // -------------------------------------------------------------
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun printTicket(turno: String, dui: String, nombre: String, servicio: String) {
         try {
 
             val ESC = 0x1B.toByte()
-            val GS = 0x1D.toByte()
-
-            val boldOn = byteArrayOf(ESC, 0x45, 0x01)
-            val boldOff = byteArrayOf(ESC, 0x45, 0x00)
             val center = byteArrayOf(ESC, 0x61, 0x01)
             val left = byteArrayOf(ESC, 0x61, 0x00)
-            val doubleSize = byteArrayOf(GS, 0x21, 0x11)
-            val normalSize = byteArrayOf(GS, 0x21, 0x00)
+
+            val now = LocalDateTime.now()
+            val fechaHora = now.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
 
             outputStream?.apply {
 
+                // --------------------------------------------------------------------
+                // 🔥 IMPRIMIR LOGO — SIN MODIFICAR NADA (MISMA FUNCIÓN DE TU OTRA APP)
+                // --------------------------------------------------------------------
                 write(center)
-                write(boldOn)
-                write(doubleSize)
-                write("TURNO\n".toByteArray(Charsets.ISO_8859_1))
+                //printLogo()   // ESTE imprime sí o sí, es el mismo
 
-                write(normalSize)
-                write(boldOff)
+                // --------------------------------------------------------------------
+                // TEXTO NORMAL (SIN GS 21, SIN TAMAÑOS)
+                // --------------------------------------------------------------------
+                write("\n".toByteArray())
+                write(center)
+                write(byteArrayOf(0x1D, 0x21, 0x11)) // doble ancho + doble alto
+                write("TURNO\n".toByteArray())
+                write(byteArrayOf(0x1D, 0x21, 0x00)) // regresar a tamaño normal
                 write("------------------------------\n".toByteArray())
 
-                write(boldOn)
-                write("NÚMERO: $turno\n".toByteArray(Charsets.ISO_8859_1))
-                write(boldOff)
-
-                write("------------------------------\n".toByteArray())
+                write(byteArrayOf(0x1D, 0x21, 0x10)) // ancho aumentado, se ve proporcional
 
                 write(left)
-                write("Gracias por esperar\n".toByteArray(Charsets.ISO_8859_1))
-                write("Su turno será llamado\n".toByteArray(Charsets.ISO_8859_1))
+                write("NUMERO: $turno\n".toByteArray())
+                write("--------------------\n".toByteArray())
 
-                write("\n\n\n".toByteArray())
+                write("DUI: $dui\n".toByteArray())
+                write("Cliente:\n".toByteArray())
+                write("$nombre\n".toByteArray())
 
-                flush()
-                Thread.sleep(150)     // <---- IMPORTANTE
-                write(byteArrayOf(0x0A)) // salto extra
+                write("\nServicio:\n".toByteArray())
+                write(clean("$servicio\n").toByteArray())
+
+                write("\nFecha y hora:\n".toByteArray())
+                write("$fechaHora\n".toByteArray())
+
+                write("--------------------\n".toByteArray())
+
+                write(center)
+                write("Gracias por esperar\n".toByteArray())
+                write("Su turno sera llamado\n".toByteArray())
+
+                write("\n\n\n\n\n".toByteArray())
+
                 flush()
             }
 
-            Log.d("BT_PRINTER", "Styled ticket sent.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Print error: ${e.message}")
+        }
+    }
+
+    fun clean(text: String): String {
+        val normalized = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFD)
+        return normalized.replace("[^\\p{ASCII}]".toRegex(), "")
+    }
+
+    // -------------------------------------------------------------
+    // 🔥🔥🔥 LOGO 100% FUNCIONAL — COPIADO DE TU OTRA APLICACIÓN 🔥🔥🔥
+    // -------------------------------------------------------------
+    private fun printLogo() {
+        try {
+            Log.e("LOGO", "==== INICIANDO printLogo ====")
+
+            val ctx = MyApp.instance
+
+            val bmpRaw = BitmapFactory.decodeResource(ctx.resources, R.drawable.escudo)
+            Log.e("LOGO", "Imagen cargada: ${bmpRaw.width}x${bmpRaw.height}")
+
+            val sizePx = 100
+            Log.e("LOGO", "Escalando a: ${sizePx}px")
+
+            val bmpScaled = Bitmap.createScaledBitmap(bmpRaw, sizePx, sizePx, true)
+            Log.e("LOGO", "bmpScaled listo: ${bmpScaled.width}x${bmpScaled.height}")
+
+            val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+            Log.e("LOGO", "Bitmap ARGB creado")
+
+            for (y in 0 until sizePx) {
+                for (x in 0 until sizePx) {
+                    val pixel = bmpScaled.getPixel(x, y)
+                    val r = (pixel shr 16) and 0xFF
+                    val g = (pixel shr 8) and 0xFF
+                    val b = pixel and 0xFF
+                    val gray = (0.3 * r + 0.59 * g + 0.11 * b).toInt()
+                    val bw = if (gray < 128) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
+                    bmp.setPixel(x, y, bw)
+                }
+            }
+            Log.e("LOGO", "Conversión B/W terminada")
+
+            val bytesPerRow = sizePx / 8
+            Log.e("LOGO", "bytesPerRow=$bytesPerRow")
+
+            val imageData = ByteArray(bytesPerRow * sizePx)
+            Log.e("LOGO", "imageData size=${imageData.size}")
+
+            for (y in 0 until sizePx) {
+                for (xByte in 0 until bytesPerRow) {
+                    var value = 0
+                    for (bit in 0 until 8) {
+                        val x = xByte * 8 + bit
+                        val pixel = bmp.getPixel(x, y)
+                        val bitValue = if (pixel == 0xFF000000.toInt()) 1 else 0
+                        value = value or (bitValue shl (7 - bit))
+                    }
+                    imageData[y * bytesPerRow + xByte] = value.toByte()
+                }
+            }
+
+            Log.e("LOGO", "DATA GENERADA correctamente.")
+
+            val header = byteArrayOf(
+                0x1D, 0x76, 0x30, 0x00,
+                (bytesPerRow and 0xFF).toByte(),
+                0x00.toByte(),
+                (sizePx and 0xFF).toByte(),
+                0x00.toByte()
+            )
+
+            Log.e("LOGO", "HEADER: ${header.joinToString()}")
+
+            Log.e("LOGO", "Escribiendo HEADER al socket…")
+            outputStream?.write(header) ?: Log.e("LOGO", "outputStream es NULL!")
+
+            Log.e("LOGO", "Escribiendo DATA al socket…")
+            outputStream?.write(imageData)
+
+            Log.e("LOGO", "ENVIADO AL SOCKET — SI AÚN NO IMPRIME, LA IMPRESORA LO ESTÁ RECHAZANDO")
+
+            outputStream?.write("\n".toByteArray())
+
+            Log.e("LOGO", "==== FIN printLogo ====")
 
         } catch (e: Exception) {
-            Log.e("BT_PRINTER", "Print error PT-210 styled: ${e.message}")
+            Log.e("LOGO_ERROR", "ERROR AL IMPRIMIR LOGO: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+
+
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun reimprimirTicket(ticket: TicketData): Boolean {
+
+        try {
+
+            val address = PrinterPreferences.getPrinterAddress(MyApp.instance)
+                ?: return false
+
+            val device = BluetoothAdapter.getDefaultAdapter()?.bondedDevices
+                ?.firstOrNull { it.address == address }
+                ?: return false
+
+            // Conectar igual que siempre
+            if (!connect(device)) return false
+
+            // Usar exactamente el mismo formato de impresión
+            printTicket(
+                turno = ticket.codigo,
+                dui = ticket.dui,
+                nombre = ticket.nombre,
+                servicio = ticket.descripcion
+            )
+
+            close()
+
+            return true
+
+        } catch (e: Exception) {
+            Log.e("REIMPRIMIR", "Error al reimprimir: ${e.message}")
+            return false
         }
     }
 
@@ -113,13 +248,8 @@ object BluetoothPrinter {
 
     fun close() {
         try {
-            Thread.sleep(200)  // ← Fix para PT-210
             outputStream?.close()
             socket?.close()
-            Log.d("BT_PRINTER", "Bluetooth connection closed.")
-        } catch (e: Exception) {
-            Log.e("BT_PRINTER", "Error closing Bluetooth connection: ${e.message}")
-        }
+        } catch (_: Exception) {}
     }
-
 }
