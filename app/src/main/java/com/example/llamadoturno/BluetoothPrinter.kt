@@ -76,7 +76,7 @@ object BluetoothPrinter {
                 // 🔥 IMPRIMIR LOGO — SIN MODIFICAR NADA (MISMA FUNCIÓN DE TU OTRA APP)
                 // --------------------------------------------------------------------
                 write(center)
-                //printLogo()   // ESTE imprime sí o sí, es el mismo
+                printLogo()   // imprime
 
                 // --------------------------------------------------------------------
                 // TEXTO NORMAL (SIN GS 21, SIN TAMAÑOS)
@@ -91,7 +91,17 @@ object BluetoothPrinter {
                 write(byteArrayOf(0x1D, 0x21, 0x10)) // ancho aumentado, se ve proporcional
 
                 write(left)
+
+                // Activar BOLD
+                write(byteArrayOf(0x1B, 0x45, 0x01))
+
+                write(byteArrayOf(0x1D, 0x21, 0x11))
+
                 write("NUMERO: $turno\n".toByteArray())
+                // Desactivar BOLD
+
+
+                write(byteArrayOf(0x1D, 0x21, 0x10))
                 write("--------------------\n".toByteArray())
 
                 write("DUI: $dui\n".toByteArray())

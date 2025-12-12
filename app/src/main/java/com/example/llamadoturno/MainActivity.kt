@@ -100,6 +100,9 @@ fun PantallaBienvenida() {
     var reimprimiendo by remember { mutableStateOf(false) }
     var mensajeReimpresion by remember { mutableStateOf("") }
 
+    var esPreferencial by remember { mutableStateOf(false) }
+
+
     fun abrirModalDui() {
         duiIngresado = ""
         nombreManual = ""
@@ -108,15 +111,16 @@ fun PantallaBienvenida() {
         errorNombre = ""
         errorDui = ""
         mostrarModalDui = true
+        esPreferencial = false
     }
 
     // -------------------------------------------------------------
     // ENVIAR + GUARDAR EN MEMORIA + IMPRIMIR
     // -------------------------------------------------------------
     @RequiresApi(Build.VERSION_CODES.O)
-    fun enviar(departamentoId: Int, dui: String, nombre: String) {
+    fun enviar(departamentoId: Int, dui: String, nombre: String, preferencial: Boolean) {
 
-        TurnoApi.enviarTurno(departamentoId, dui, nombre) { success, result ->
+        TurnoApi.enviarTurno(departamentoId, dui, nombre,preferencial) { success, result ->
 
             mensajeTurno = result
 
@@ -316,6 +320,28 @@ fun PantallaBienvenida() {
 
                         Spacer(Modifier.height(12.dp))
 
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Preferencial",
+                                fontSize = 16.sp,
+                                color = Color(0xFF111827)
+                            )
+
+                            Switch(
+                                checked = esPreferencial,
+                                onCheckedChange = { esPreferencial = it }
+                            )
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+
                         OutlinedTextField(
                             value = duiIngresado,
                             onValueChange = {
@@ -408,7 +434,7 @@ fun PantallaBienvenida() {
 
                                     mostrarModalDui = false
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                        enviar(departamentoSeleccionado, duiIngresado, nombreManual)
+                                        enviar(departamentoSeleccionado, duiIngresado, nombreManual, esPreferencial)
                                     }
 
                                 }

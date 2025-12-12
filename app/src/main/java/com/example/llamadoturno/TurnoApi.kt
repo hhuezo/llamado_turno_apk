@@ -1,5 +1,7 @@
 package com.example.llamadoturno
 
+import android.R
+import android.util.Log
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import org.json.JSONObject
@@ -9,14 +11,14 @@ object TurnoApi {
 
     private val client = OkHttpClient()
 
-    fun enviarTurno(departamentoId: Int,dui: String, nombre: String, callback: (Boolean, String) -> Unit) {
+    fun enviarTurno(departamentoId: Int,dui: String, nombre: String, preferencial: Boolean, callback: (Boolean, String) -> Unit) {
         val url = "http://192.162.20.95/llamado_turno/public/api/turnos"
 
         val json = JSONObject().apply {
             put("departamento_id", departamentoId)
             put("dui", dui)
             put("nombre", nombre)
-
+            put("preferencial", preferencial)
         }
 
         val body = RequestBody.create(
