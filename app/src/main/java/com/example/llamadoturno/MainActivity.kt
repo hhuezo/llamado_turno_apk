@@ -35,6 +35,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.llamadoturno.ui.theme.LlamadoTurnoTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -102,6 +106,7 @@ fun PantallaBienvenida() {
 
     var esPreferencial by remember { mutableStateOf(false) }
 
+    val scope = rememberCoroutineScope()
 
     fun abrirModalDui() {
         duiIngresado = ""
@@ -140,7 +145,7 @@ fun PantallaBienvenida() {
 
                 listaUltimosTickets = LastTicketsPreferences.getTickets(context)
 
-                // Imprimir
+                // Imprimir con loading mínimo 2 segundos
                 val address = PrinterPreferences.getPrinterAddress(context)
                 if (address != null) {
 
@@ -151,24 +156,32 @@ fun PantallaBienvenida() {
 
                     if (device != null) {
 
-                        imprimiendo = true
+                        scope.launch {
+                            imprimiendo = true
+                            val start = System.currentTimeMillis()
 
-                        if (BluetoothPrinter.connect(device)) {
+                            withContext(Dispatchers.IO) {
+                                if (BluetoothPrinter.connect(device)) {
+                                    BluetoothPrinter.printTicket(
+                                        turno = turnoCodigo,
+                                        dui = dui,
+                                        nombre = nombre,
+                                        servicio = nombreServicio
+                                    )
+                                    BluetoothPrinter.close()
+                                } else {
+                                    mensajeTurno = "No se pudo conectar a la impresora."
+                                }
+                            }
 
-                            BluetoothPrinter.printTicket(
-                                turno = turnoCodigo,
-                                dui = dui,
-                                nombre = nombre,
-                                servicio = nombreServicio
-                            )
+                            val elapsed = System.currentTimeMillis() - start
+                            val remaining = (2000 - elapsed).coerceAtLeast(0)
+                            if (remaining > 0) delay(remaining)
 
-                            BluetoothPrinter.close()
-
-                        } else {
-                            mensajeTurno = "No se pudo conectar a la impresora."
+                            imprimiendo = false
+                            dialogoVisible = true
                         }
-
-                        imprimiendo = false
+                        return@enviarTurno
                     }
                 }
             }
@@ -183,42 +196,44 @@ fun PantallaBienvenida() {
     @RequiresApi(Build.VERSION_CODES.O)
     fun reimprimir(ticket: TicketData, onResult: (String) -> Unit) {
 
-        reimprimiendo = true
-        mensajeReimpresion = ""
+        scope.launch {
+            reimprimiendo = true
+            mensajeReimpresion = ""
+            val start = System.currentTimeMillis()
 
-        val address = PrinterPreferences.getPrinterAddress(context)
-
-        val mensaje = if (address == null) {
-
-            "No hay impresora configurada"
-
-        } else {
-
-            val device = BluetoothAdapter.getDefaultAdapter()
-                ?.bondedDevices
-                ?.firstOrNull { it.address == address }
-
-            if (device == null) {
-                "Impresora no encontrada"
-            } else if (!BluetoothPrinter.connect(device)) {
-                "No se pudo conectar a la impresora"
-            } else {
-
-                BluetoothPrinter.printTicket(
-                    turno = ticket.codigo,
-                    dui = ticket.dui,
-                    nombre = ticket.nombre,
-                    servicio = ticket.descripcion
-                )
-
-                BluetoothPrinter.close()
-                "Ticket reimpreso correctamente"
+            val mensaje = withContext(Dispatchers.IO) {
+                val address = PrinterPreferences.getPrinterAddress(context)
+                if (address == null) {
+                    "No hay impresora configurada"
+                } else {
+                    val device = BluetoothAdapter.getDefaultAdapter()
+                        ?.bondedDevices
+                        ?.firstOrNull { it.address == address }
+                    when {
+                        device == null -> "Impresora no encontrada"
+                        !BluetoothPrinter.connect(device) -> "No se pudo conectar a la impresora"
+                        else -> {
+                            BluetoothPrinter.printTicket(
+                                turno = ticket.codigo,
+                                dui = ticket.dui,
+                                nombre = ticket.nombre,
+                                servicio = ticket.descripcion
+                            )
+                            BluetoothPrinter.close()
+                            "Ticket reimpreso correctamente"
+                        }
+                    }
+                }
             }
-        }
 
-        mensajeReimpresion = mensaje
-        reimprimiendo = false
-        onResult(mensaje)
+            val elapsed = System.currentTimeMillis() - start
+            val remaining = (2000 - elapsed).coerceAtLeast(0)
+            if (remaining > 0) delay(remaining)
+
+            mensajeReimpresion = mensaje
+            reimprimiendo = false
+            onResult(mensaje)
+        }
     }
 
 
@@ -276,27 +291,24 @@ fun PantallaBienvenida() {
                     }
                 }
             )
+        }
 
-            Spacer(Modifier.height(50.dp))
-
-            // Botón configuración impresora
-            Button(
-                onClick = {
-                    PrinterPreferences.clearPrinter(context)
-                    seleccionImpresora = true
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8F1FB)),
-                shape = RoundedCornerShape(50),
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(58.dp)
-                    .padding(horizontal = 6.dp)
-            ) {
-                Icon(Icons.Default.Settings, null, tint = Color(0xFF005696))
-                Spacer(Modifier.width(12.dp))
-                Text("Configuración de Impresora", color = Color(0xFF005696), fontSize = 18.sp)
-            }
+        // Configuración impresora — ícono más abajo y más grande para que destaque
+        IconButton(
+            onClick = {
+                PrinterPreferences.clearPrinter(context)
+                seleccionImpresora = true
+            },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 56.dp, end = 12.dp)
+        ) {
+            Icon(
+                Icons.Default.Settings,
+                contentDescription = "Configuración de impresora",
+                tint = Color(0xFF005696),
+                modifier = Modifier.size(36.dp)
+            )
         }
 
 

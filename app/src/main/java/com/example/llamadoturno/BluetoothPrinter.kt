@@ -47,6 +47,8 @@ object BluetoothPrinter {
             }
 
             outputStream = socket!!.outputStream
+            // Dar tiempo a la impresora para estar lista tras la conexión
+            Thread.sleep(500)
             true
 
         } catch (e: Exception) {
@@ -56,8 +58,16 @@ object BluetoothPrinter {
     }
 
 
+    // Comandos ESC/POS: tamaño 0x1D 0x21 n → n = (ancho-1)<<4 | (alto-1)
+    // 0x11 = 2x2, 0x10 = 2x1 (doble ancho), 0x01 = 1x2
+    private fun size2x2() = byteArrayOf(0x1D.toByte(), 0x21, 0x11)
+    private fun size2x1() = byteArrayOf(0x1D.toByte(), 0x21, 0x10) // un poco más grande que normal
+    private fun sizeNormal() = byteArrayOf(0x1D.toByte(), 0x21, 0x00)
+    private fun boldOn() = byteArrayOf(0x1B.toByte(), 0x45, 0x01)
+    private fun boldOff() = byteArrayOf(0x1B.toByte(), 0x45, 0x00)
+
     // -------------------------------------------------------------
-    // 🔥 PRINT TICKET — TEXTO NORMAL (NO SE CORTA)
+    // TICKET REDISEÑADO — LETRA GRANDE Y MEJOR VISIBILIDAD
     // -------------------------------------------------------------
     @RequiresApi(Build.VERSION_CODES.O)
     fun printTicket(turno: String, dui: String, nombre: String, servicio: String) {
@@ -72,57 +82,73 @@ object BluetoothPrinter {
 
             outputStream?.apply {
 
-                // --------------------------------------------------------------------
-                // 🔥 IMPRIMIR LOGO — SIN MODIFICAR NADA (MISMA FUNCIÓN DE TU OTRA APP)
-                // --------------------------------------------------------------------
                 write(center)
-                printLogo()   // imprime
+                printLogo()
+                write(byteArrayOf(0x1B, 0x40)) // ESC @ — reset impresora tras modo gráfico
+                write(center)
+                write("\n".toByteArray()) // Poco margen entre logo y texto
 
-                // --------------------------------------------------------------------
-                // TEXTO NORMAL (SIN GS 21, SIN TAMAÑOS)
-                // --------------------------------------------------------------------
-                write("\n".toByteArray())
+                // ----- TÍTULO "TURNO" — UN POCO MÁS PEQUEÑO (2x2) -----
                 write(center)
-                write(byteArrayOf(0x1D, 0x21, 0x11)) // doble ancho + doble alto
+                write(size2x2())
+                write(boldOn())
                 write("TURNO\n".toByteArray())
-                write(byteArrayOf(0x1D, 0x21, 0x00)) // regresar a tamaño normal
-                write("------------------------------\n".toByteArray())
+                write(boldOff())
+                write(sizeNormal())
 
-                write(byteArrayOf(0x1D, 0x21, 0x10)) // ancho aumentado, se ve proporcional
+                write(center)
+                write("========================\n".toByteArray())
 
+                // ----- NÚMERO DE TURNO — DESTACADO (2x2 + BOLD) -----
+                write(center)
+                write(size2x2())
+                write(boldOn())
+                write("$turno\n".toByteArray())
+                write(boldOff())
+                write(sizeNormal())
+
+                write(center)
+                write("========================\n".toByteArray())
+                write("\n".toByteArray())
+
+                // ----- DUI, CLIENTE, SERVICIO — un poco más grande (2x1) -----
                 write(left)
+                write(size2x1())
+                write(boldOn())
+                write("DUI: ".toByteArray())
+                write(boldOff())
+                write("$dui\n".toByteArray())
 
-                // Activar BOLD
-                write(byteArrayOf(0x1B, 0x45, 0x01))
-
-                write(byteArrayOf(0x1D, 0x21, 0x11))
-
-                write("NUMERO: $turno\n".toByteArray())
-                // Desactivar BOLD
-
-
-                write(byteArrayOf(0x1D, 0x21, 0x10))
-                write("--------------------\n".toByteArray())
-
-                write("DUI: $dui\n".toByteArray())
+                write(boldOn())
                 write("Cliente:\n".toByteArray())
-                write("$nombre\n".toByteArray())
+                write(boldOff())
+                write("$nombre\n\n".toByteArray())
 
-                write("\nServicio:\n".toByteArray())
-                write(clean("$servicio\n").toByteArray())
+                write(boldOn())
+                write("Servicio:\n".toByteArray())
+                write(boldOff())
+                write(clean("$servicio\n\n").toByteArray())
 
-                write("\nFecha y hora:\n".toByteArray())
+                write(sizeNormal())
+                write(boldOn())
+                write("Fecha y hora:\n".toByteArray())
+                write(boldOff())
                 write("$fechaHora\n".toByteArray())
 
-                write("--------------------\n".toByteArray())
+                write("------------------------\n".toByteArray())
 
+                // ----- PIE — TEXTO PEQUEÑO Y CENTRADO -----
                 write(center)
+                write(sizeNormal())
                 write("Gracias por esperar\n".toByteArray())
                 write("Su turno sera llamado\n".toByteArray())
 
                 write("\n\n\n\n\n".toByteArray())
 
                 flush()
+                // Esperar a que la impresora termine de procesar todo el ticket
+                // antes de cerrar la conexión (evita que reimpresión quede a medias)
+                Thread.sleep(2000)
             }
 
         } catch (e: Exception) {
